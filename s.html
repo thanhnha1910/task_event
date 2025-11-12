@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Court Order Calendar Integration - Async Processing</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: #ffffff;
+        min-height: 100vh;
+        padding: 20px;
+      }
+      .container { max-width: 1200px; margin: 0 auto; }
+      .header { text-align: center; color: #333; margin-bottom: 30px; }
+      .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+      .header p { font-size: 1.1rem; opacity: 0.9; }
+      .card { 
+        background: white; 
+        border-radius: 12px; 
+        padding: 30px; 
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); 
+        margin-bottom: 20px; 
+      }
+      .upload-section { 
+        text-align: center; 
+        padding: 40px 20px; 
+        border: 3px dashed #667eea; 
+        border-radius: 8px; 
+        cursor: pointer; 
+        transition: all 0.3s ease; 
+      }
+      .upload-section:hover { border-color: #764ba2; background: #f8f9ff; }
+      .upload-section.dragover { border-color: #764ba2; background: #f0f2ff; }
+      .upload-icon { font-size: 4rem; margin-bottom: 15px; }
+      .upload-section h3 { color: #333; margin-bottom: 10px; }
+      .upload-section p { color: #666; margin-bottom: 20px; }
+      #fileInput { display: none; }
+      .btn { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        color: white; 
+        border: none; 
+        padding: 12px 30px; 
+        border-radius: 6px; 
+        font-size: 1rem; 
+        cursor: pointer; 
+        transition: transform 0.2s ease; 
+        font-weight: 600; 
+      }
+      .btn:hover { transform: translateY(-2px); }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .file-info { 
+        display: none; 
+        text-align: center; 
+        margin-top: 15px; 
+        padding: 15px; 
+        background: #f0f2ff; 
+        border-radius: 6px; 
+      }
+      .file-info.active { display: block; }
+      .file-name { font-weight: 600; color: #333; margin-bottom: 10px; }
+      .reset-btn { background: #e0e0e0; color: #333; margin-left: 10px; }
+      .reset-btn:hover { background: #d0d0d0; }
+      
+      /* Progress Bar */
+      .progress-container {
+        margin: 20px 0;
+        display: none;
+      }
+      .progress-container.active {
+        display: block;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 30px;
+        background: #f0f0f0;
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+      }
+      .progress-fill {
+        height: 100%;
+        background: #ffffff;
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #555;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .progress-text {
+        text-align: center;
+        margin-top: 8px;
+        font-size: 14px;
+        color: #555;
+      }
+      
+      /* Spinner */
+      .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-right: 8px;
+        vertical-align: middle;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* Status Badge */
+      .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .status-processing {
+        background: #fff3cd;
+        color: #856404;
+      }
+      .status-completed {
+        background: #d4edda;
+        color: #155724;
+      }
+      .status-error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+      
+      .result-section { display: none; }
+      .result-section.active { display: block; }
+      .summary-cards { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+        gap: 15px; 
+        margin-bottom: 30px; 
+      }
+      .summary-card { 
+        background: #ffffff; 
+        color: #333; 
+        padding: 20px; 
+        border-radius: 8px; 
+        text-align: center; 
+        border: 1px solid #e0e0e0;
+      }
+      .summary-card h3 { font-size: 2rem; margin-bottom: 5px; }
+      .summary-card p { opacity: 0.9; }
+      .table-container { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+      th { 
+        background: #ffffff; 
+        color: #333; 
+        padding: 15px; 
+        text-align: left; 
+        font-weight: 600; 
+      }
+      td { padding: 15px; border-bottom: 1px solid #e0e0e0; vertical-align: middle; }
+      tr:hover { background: #f8f9ff; }
+      .badge { padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+      .badge-plaintiff { background: #e3f2fd; color: #1976d2; }
+      .badge-defendant { background: #fff3e0; color: #f57c00; }
+      .badge-both { background: #f3e5f5; color: #7b1fa2; }
+      .alert { padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+      .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+      .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+      .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+      .mode-indicator { 
+        display: inline-block; 
+        padding: 8px 16px; 
+        border-radius: 20px; 
+        font-size: 0.9rem; 
+        font-weight: 600; 
+        margin-top: 10px; 
+      }
+      .mode-text { background: #e8f5e9; color: #2e7d32; }
+      .mode-ocr { background: #fff3e0; color: #e65100; }
+      
+      .btn-add {
+        background: #28a745;
+        border: none;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.3s ease;
+        min-width: 100px;
+        text-align: center;
+      }
+      .btn-add:hover {
+        background: #218838;
+      }
+      .btn-add:disabled {
+        background: #a0a0a0;
+        cursor: not-allowed;
+        opacity: 1;
+      }
+      .btn-add .spinner {
+          width: 14px;
+          height: 14px;
+          margin: 0;
+          border-top-color: white;
+          border-left-color: white;
+          border-right-color: white;
+      }
+
+      .btn-view {
+        background: #007bff;
+        border: none;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.3s ease;
+        min-width: 100px; 
+        text-align: center;
+      }
+      .btn-view:hover {
+        background: #0069d9;
+      }
+      
+      .action-buttons {
+        display: flex;
+        flex-direction: column; 
+        gap: 5px; 
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        .card { background: #ffffff; }
+        .progress-bar { background: #f0f0f0; }
+        th { background: #ffffff; }
+      }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⚖️ Court Order Calendar Integration</h1>
+        <p>
+          Upload court order PDF - Automatic async processing with real-time progress tracking
+        </p>
+      </div>
+
+      <div class="card">
+        <div style="margin-bottom: 20px; padding: 15px; background: #f8f9ff; border-radius: 8px; border-left: 4px solid #667eea;">
+          <label for="webhookUrl" style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">
+            🔗 n8n Webhook URL (Start):
+          </label>
+          <input
+            type="text"
+            id="webhookUrl"
+            value="https://n8n-nick.abapi.dev/webhook/court-order-start"
+            placeholder="Enter your n8n webhook URL"
+            style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; transition: border-color 0.3s ease;"
+            onfocus="this.style.borderColor='#667eea'"
+            onblur="this.style.borderColor='#e0e0e0'"
+          />
+          <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+            💡 Async endpoint: Returns jobId immediately, polls for results (no timeout!)
+          </small>
+        </div>
+
+        <div class="upload-section" id="uploadArea">
+          <div class="upload-icon">📄</div>
+          <h3>Upload Court Order PDF</h3>
+          <p>Drag and drop your PDF file here, or click to browse</p>
+          <p style="font-size: 0.9rem; color: #999;">
+            ✨ Auto-detects text PDFs vs scanned images
+          </p>
+          <input type="file" id="fileInput" accept=".pdf" />
+          <button
+            class="btn"
+            onclick="document.getElementById('fileInput').click()"
+          >
+            Choose File
+          </button>
+        </div>
+
+        <div class="file-info" id="fileInfo">
+          <div class="file-name" id="fileName"></div>
+          <div id="pdfModeIndicator" style="margin-top: 10px;"></div>
+          <div style="margin-top: 15px;">
+            <button class="btn" id="uploadBtn" onclick="uploadFile()">
+              🚀 Upload & Start Processing
+            </button>
+            <button class="btn reset-btn" onclick="resetUpload()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="processingCard" style="display: none;">
+        <h3 id="statusTitle">Processing your court order...</h3>
+        <div id="statusMessage" style="margin: 15px 0; font-size: 14px; color: #666;"></div>
+        
+        <div id="progressContainer" class="progress-container">
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill" style="width: 0%;">0%</div>
+          </div>
+          <div id="progressText" class="progress-text"></div>
+        </div>
+        
+        <div style="margin-top: 15px;">
+          <button class="btn reset-btn" id="cancelBtn" onclick="stopPolling()">
+            ❌ Cancel Polling
+          </button>
+        </div>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="alert alert-success" id="alertMessage"></div>
+        
+        <div id="calendarAlert" class="alert" style="display: none; margin-bottom: 20px;"></div>
+        
+        <div class="summary-cards">
+          <div class="summary-card">
+            <h3 id="totalEvents">0</h3>
+            <p>Total Deadlines Found</p>
+          </div>
+          <div class="summary-card">
+            <h3 id="processingMethod">-</h3>
+            <p>Processing Method</p>
+          </div>
+          <div class="summary-card">
+            <h3 id="dateRange">-</h3>
+            <p>Date Range</p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>📅 Extracted Deadlines</h2>
+          <p style="color: #666; margin-bottom: 15px;">
+            Review the deadlines extracted from your court order
+          </p>
+          <div class="table-container">
+            <table id="eventsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Action Required</th>
+                  <th>Deadline</th>
+                  <th>Responsible</th>
+                  <th>Notes</th>
+                  <th style="width: 100px;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="eventsTableBody"></tbody>
+            </table>
+          </div>
+          <details style="margin-top: 16px;">
+            <summary style="cursor: pointer; color: #777;">View Raw JSON Response</summary>
+            <pre id="resultJson" style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow: auto; max-height: 400px; font-size: 13px;">(no data yet)</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Set PDF.js worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+      const $ = (sel) => document.querySelector(sel);
+      
+      let selectedFile = null;
+      let pdfMode = null;
+      let pollingInterval = null;
+      let currentJobId = null;
+      
+      let lastResultsData = null;
+
+      function getWebhookUrl() {
+        return $('#webhookUrl').value.trim();
+      }
+      
+      function getStatusUrl() {
+        return getWebhookUrl().replace('/court-order-start', '/court-order-status');
+      }
+
+      // Drag and drop handlers
+      const uploadArea = $('#uploadArea');
+      const fileInput = $('#fileInput');
+      const fileInfo = $('#fileInfo');
+      const fileName = $('#fileName');
+
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+      });
+
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+      });
+
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === 'application/pdf') {
+          handleFileSelect(files[0]);
+        } else {
+          alert('Please upload a PDF file');
+        }
+      });
+
+      uploadArea.addEventListener('click', (e) => {
+        if (e.target === uploadArea || e.target.closest('.upload-section')) {
+          fileInput.click();
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0]);
+        }
+      });
+
+      async function handleFileSelect(file) {
+        selectedFile = file;
+        fileName.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+        
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+          const firstPage = await pdf.getPage(1);
+          const textContent = await firstPage.getTextContent();
+          
+          const hasText = textContent.items.length > 10;
+          pdfMode = hasText ? 'text' : 'ocr';
+          
+          const indicator = $('#pdfModeIndicator');
+          if (pdfMode === 'text') {
+            indicator.innerHTML = '<span class="mode-indicator mode-text">📘 Text-based PDF detected</span>';
+          } else {
+            indicator.innerHTML = '<span class="mode-indicator mode-ocr">📗 Scanned PDF detected - Will convert to images</span>';
+          }
+          
+          console.log(`PDF Mode (Client Hint): ${pdfMode}, Text items found: ${textContent.items.length}`);
+          
+        } catch (error) {
+          console.error('Error analyzing PDF:', error);
+          pdfMode = 'text';
+        }
+        
+        fileInfo.classList.add('active');
+      }
+
+      function resetUpload() {
+        console.log('Resetting upload state...');
+        selectedFile = null;
+        pdfMode = null;
+        fileInput.value = '';
+        fileInfo.classList.remove('active');
+        $('#pdfModeIndicator').innerHTML = '';
+        $('#resultSection').classList.remove('active');
+        $('#processingCard').style.display = 'none';
+        $('#totalEvents').textContent = '0';
+        $('#processingMethod').textContent = '-';
+        $('#dateRange').textContent = '-';
+        $('#eventsTableBody').innerHTML = '';
+        $('#alertMessage').textContent = '';
+        $('#resultJson').textContent = '(no data yet)';
+        
+        lastResultsData = null;
+        $('#calendarAlert').style.display = 'none';
+        
+        console.log('Upload state reset complete');
+      }
+
+      async function convertPdfToImages(file) {
+        console.log('Starting PDF to image conversion...');
+        const imagesBase64 = [];
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        const totalPages = pdf.numPages;
+
+        for (let i = 1; i <= totalPages; i++) {
+          $('#statusMessage').textContent = `Converting page ${i} of ${totalPages} to image...`;
+          updateProgress(i, totalPages);
+          
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 2.0 });
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+
+          await page.render({ canvasContext: context, viewport }).promise;
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          imagesBase64.push(dataUrl);
+        }
+
+        console.log(`Conversion complete. ${imagesBase64.length} images created.`);
+        return imagesBase64;
+      }
+
+      function updateProgress(current, total, message) {
+        if (!total || total === 0) return;
+        
+        const percent = Math.round((current / total) * 100);
+        const progressFill = $('#progressFill');
+        const progressText = $('#progressText');
+        
+        progressFill.style.width = percent + '%';
+        progressFill.textContent = percent + '%';
+        progressText.textContent = message || `Processing ${current} of ${total}`;
+      }
+
+      async function pollStatus(jobId) {
+        try {
+          const statusUrl = `${getStatusUrl()}?jobId=${jobId}`;
+          
+          console.log('=== POLLING STATUS ===');
+          console.log('JobId:', jobId);
+          console.log('Status URL:', statusUrl);
+          
+          const res = await fetch(statusUrl, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (!res.ok) {
+            throw new Error(`Status check failed: ${res.status}`);
+          }
+          
+          const data = await res.json();
+          console.log('Status response:', data);
+          
+          if (data.status === 'processing') {
+            $('#statusMessage').innerHTML = `
+              <span class="status-badge status-processing">
+                <div class="spinner"></div>Processing...
+              </span>
+              ${data.progress ? ` ${data.progress}` : ''}
+            `;
+            
+            if (data.progress) {
+              const match = data.progress.match(/(\d+)\/(\d+)/);
+              if (match) {
+                const done = parseInt(match[1]);
+                const expected = parseInt(match[2]);
+                updateProgress(done, expected, data.progress);
+              }
+            }
+          } else if (data.status === 'completed') {
+            stopPolling();
+            
+            $('#statusMessage').innerHTML = `
+              <span class="status-badge status-completed">
+                ✓ Processing completed successfully!
+              </span>
+            `;
+            
+            updateProgress(1, 1, 'Processing complete!');
+            
+            if (data.result) {
+              displayResults(data.result);
+            }
+            
+          } else if (data.status === 'error') {
+            stopPolling();
+            $('#statusMessage').innerHTML = `
+              <span class="status-badge status-error">
+                ❌ Error: ${data.error || 'Unknown error'}
+              </span>
+            `;
+          } else {
+            $('#statusMessage').innerHTML = `<span class="warning">Status: ${data.status}</span>`;
+          }
+          
+        } catch (error) {
+          console.error('=== POLLING ERROR ===');
+          console.error('Error:', error);
+          $('#statusMessage').innerHTML = `<span class="status-badge status-error">❌ Error checking status: ${error.message}</span>`;
+        }
+      }
+
+      function startPolling(jobId) {
+        currentJobId = jobId;
+        
+        $('#processingCard').style.display = 'block';
+        $('#progressContainer').classList.add('active');
+        
+        pollingInterval = setInterval(() => {
+          pollStatus(jobId);
+        }, 2000);
+        
+        pollStatus(jobId);
+      }
+
+      function stopPolling() {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+        
+        currentJobId = null;
+        $('#uploadBtn').disabled = false;
+        $('#statusMessage').textContent = 'Polling cancelled';
+      }
+
+      async function uploadFile() {
+        if (!selectedFile) {
+          alert('Please select a file first');
+          return;
+        }
+
+        console.log('Starting upload process...');
+        console.log('Client-detected PDF Mode:', pdfMode);
+
+        $('#resultSection').classList.remove('active');
+        $('#processingCard').style.display = 'block';
+        $('#uploadBtn').disabled = true;
+        $('#statusTitle').textContent = 'Uploading file...';
+        $('#statusMessage').textContent = 'Preparing your PDF...';
+
+        const webhookUrl = getWebhookUrl();
+        if (!webhookUrl) {
+          alert('Please enter a valid webhook URL');
+          $('#processingCard').style.display = 'none';
+          $('#uploadBtn').disabled = false;
+          return;
+        }
+
+        try {
+          let response;
+          let payload;
+
+          if (pdfMode === 'text') {
+            console.log('Sending text-based PDF as FormData...');
+            $('#statusMessage').textContent = 'Uploading text-based PDF...';
+            
+            let formData = new FormData();
+            formData.append('mode', 'extract');
+            formData.append('data', selectedFile);
+            formData.append('clientPdfMode', 'text');
+
+            response = await fetch(webhookUrl, {
+              method: 'POST',
+              body: formData
+            });
+
+          } else if (pdfMode === 'ocr') {
+            console.log('Converting Scanned PDF to images...');
+            $('#progressContainer').classList.add('active');
+            const imagesArray = await convertPdfToImages(selectedFile);
+            
+            $('#statusMessage').textContent = `Uploading ${imagesArray.length} images for OCR...`;
+
+            payload = {
+              mode: 'extract',
+              clientPdfMode: 'ocr',
+              images: imagesArray
+            };
+
+            response = await fetch(webhookUrl, {
+              method: 'POST',
+              body: JSON.stringify(payload),
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+
+          } else {
+            throw new Error('PDF mode (text/ocr) not determined. Please re-select file.');
+          }
+
+          console.log('Response received:', response.status, response.statusText);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Response error:', errorText);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+          }
+
+          const result = await response.json();
+          console.log('Response data:', result);
+
+          if (!result.success || !result.jobId) {
+            throw new Error(result.error || 'Failed to get jobId from server');
+          }
+
+          $('#statusTitle').textContent = 'Processing your court order...';
+          $('#statusMessage').innerHTML = `
+            <span class="status-badge status-processing">
+              ✓ Upload successful!
+            </span><br/>
+            <small style="color: #666;">JobId: ${result.jobId}</small>
+          `;
+          
+          startPolling(result.jobId);
+
+        } catch (error) {
+          console.error('Upload error:', error);
+          $('#processingCard').style.display = 'none';
+
+          let errorMessage = 'Error processing file: ' + error.message;
+          if (error.message.includes('Failed to fetch')) {
+            errorMessage = 'Network error: Cannot connect to webhook. Please check URL and n8n workflow.';
+          }
+
+          alert(errorMessage);
+          $('#uploadBtn').disabled = false;
+        }
+      }
+
+      function displayResults(data) {
+        try {
+          console.log('displayResults called with data:', data);
+
+          lastResultsData = data;
+          $('#calendarAlert').style.display = 'none';
+
+          if (!data || typeof data !== 'object') {
+            console.error('Invalid data received:', data);
+            throw new Error('Invalid response data received from server');
+          }
+
+          const deadlines = data.deadlines || [];
+          const totalCount = data.totalCount || deadlines.length || 0;
+          const processingMethod = data.processingMethod || (pdfMode === 'ocr' ? 'OCR + AI' : 'Text Extraction + AI');
+          
+          console.log('Mapped data:', {
+            totalCount,
+            processingMethod,
+            deadlinesCount: deadlines.length
+          });
+
+          $('#totalEvents').textContent = totalCount;
+          $('#processingMethod').textContent = processingMethod;
+
+          let dateRangeText = 'N/A';
+          if (deadlines.length > 0) {
+            const dates = deadlines
+              .map(d => d.deadline)
+              .filter(d => d)
+              .sort();
+            if (dates.length > 0) {
+              const firstDate = dates[0];
+              const lastDate = dates[dates.length - 1];
+              dateRangeText = firstDate === lastDate 
+                ? firstDate 
+                : `${firstDate} to ${lastDate}`;
+            }
+          }
+          $('#dateRange').textContent = dateRangeText;
+
+          const tableBody = $('#eventsTableBody');
+          tableBody.innerHTML = '';
+
+          console.log('Processing deadlines:', deadlines);
+
+          if (deadlines.length > 0) {
+            deadlines.forEach((deadline, index) => {
+              const row = document.createElement('tr');
+              
+              let badgeClass = 'badge';
+              const responsible = (deadline.responsible || '').toLowerCase();
+              if (responsible.includes('plaintiff')) {
+                badgeClass += ' badge-plaintiff';
+              } else if (responsible.includes('defendant')) {
+                badgeClass += ' badge-defendant';
+              } else {
+                badgeClass += ' badge-both';
+              }
+              
+              row.innerHTML = `
+                <td>${index + 1}</td>
+                <td style="font-weight: 500;">${deadline.action || 'N/A'}</td>
+                <td>${deadline.deadline || 'N/A'}</td>
+                <td><span class="${badgeClass}">${deadline.responsible || 'N/A'}</span></td>
+                <td style="color: #666; font-size: 0.9em;">${deadline.notes || '-'}</td>
+                <td>
+                  <button class="btn-add" id="add-btn-${index}" onclick="handleAddEvent(${index}, this)">
+                    Add ➕
+                  </button>
+                </td>
+              `;
+              tableBody.appendChild(row);
+            });
+            console.log('Added', deadlines.length, 'rows to table');
+          } else {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td colspan="6" style="padding: 20px; text-align: center; color: #666;">
+                No deadlines found in the document
+              </td>
+            `;
+            tableBody.appendChild(row);
+            console.log('No deadlines found, added empty state row');
+          }
+
+          let alertMessage = '';
+          if (data.success) {
+            const modeEmoji = (processingMethod.toLowerCase().includes('ocr')) ? '📗' : '📘';
+            alertMessage = `✅ ${modeEmoji} Successfully extracted ${totalCount} deadline(s) using ${processingMethod}`;
+          } else {
+            alertMessage = `⚠️ ${data.message || 'Processing completed with warnings'}`;
+          }
+          $('#alertMessage').textContent = alertMessage;
+          console.log('Alert message set:', alertMessage);
+
+          $('#resultJson').textContent = JSON.stringify(data, null, 2);
+
+          requestAnimationFrame(() => {
+            console.log('Showing results section...');
+            $('#resultSection').classList.add('active');
+            $('#processingCard').style.display = 'none';
+            console.log('Results section should now be visible');
+          });
+        } catch (error) {
+          console.error('Error displaying results:', error);
+          alert('Error displaying results: ' + error.message);
+        }
+      }
+      
+      // ===========================
+      // FIXED: handleAddEvent function
+      // ===========================
+      async function handleAddEvent(index, buttonElement) {
+        console.log(`=== HANDLE ADD EVENT START ===`);
+        console.log(`Adding event at index ${index}`);
+        
+        const calendarAlert = $('#calendarAlert');
+        
+        // 1. Validate event data exists
+        if (!lastResultsData || !lastResultsData.deadlines || !lastResultsData.deadlines[index]) {
+            console.error('Cannot find event data for index', index);
+            calendarAlert.textContent = `❌ Error: Event data not found`;
+            calendarAlert.className = 'alert alert-error';
+            calendarAlert.style.display = 'block';
+            return;
+        }
+        
+        const eventToAdd = lastResultsData.deadlines[index];
+        console.log('Event to add:', eventToAdd);
+        
+        // 2. Show loading state
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<div class="spinner"></div>';
+        calendarAlert.style.display = 'none';
+        
+        // 3. Prepare payload
+        const payload = {
+          mode: "add",
+          events: [eventToAdd],
+          calendar: "c_e7283e6801132309cfd56c416a0ed3cfb7d2b8224a00bce7a9fe04eb5a6ab24a@group.calendar.google.com"
+        };
+        
+        console.log('Sending payload:', JSON.stringify(payload, null, 2));
+        
+        const webhookUrl = getWebhookUrl();
+        
+        try {
+          // 4. Send request
+          console.log('Sending POST to:', webhookUrl);
+          const response = await fetch(webhookUrl, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('Response status:', response.status);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Response error:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+          
+          const result = await response.json();
+          console.log('=== ADD RESPONSE RECEIVED ===');
+          console.log('Full response:', JSON.stringify(result, null, 2));
+          
+          // 5. Validate response structure
+          if (!result.success) {
+            throw new Error(result.message || 'Server returned success=false');
+          }
+          
+          // 6. Extract event link - with detailed debugging
+          let newEventLink = null;
+          
+          console.log('Checking for event link...');
+          console.log('result.events:', result.events);
+          
+          if (result.events && Array.isArray(result.events) && result.events.length > 0) {
+            console.log('First event object:', result.events[0]);
+            console.log('Link field:', result.events[0].link);
+            
+            newEventLink = result.events[0].link;
+          } else {
+            console.warn('No events array in response or empty array');
+          }
+          
+          // 7. Update UI based on link availability
+          if (newEventLink && typeof newEventLink === 'string' && newEventLink.length > 0) {
+            console.log('✓ Event link found:', newEventLink);
+            
+            // Success with link - change to View button
+            buttonElement.innerHTML = 'View Event 👁️';
+            buttonElement.className = 'btn-view';
+            buttonElement.disabled = false;
+            
+            // Update onclick to open link
+            buttonElement.onclick = () => {
+              console.log('Opening event link:', newEventLink);
+              window.open(newEventLink, '_blank');
+            };
+            
+            calendarAlert.textContent = `✅ Successfully added "${eventToAdd.action}". Click 'View Event' to see it.`;
+            calendarAlert.className = 'alert alert-success';
+            calendarAlert.style.display = 'block';
+            
+          } else {
+            console.warn('⚠️ No event link in response');
+            console.log('Response structure:', JSON.stringify(result, null, 2));
+            
+            // Success but no link - show generic success message
+            buttonElement.innerHTML = '✓ Added!';
+            buttonElement.disabled = true;
+            
+            calendarAlert.textContent = `✅ Successfully added "${eventToAdd.action}" to calendar (no link provided by server).`;
+            calendarAlert.className = 'alert alert-success';
+            calendarAlert.style.display = 'block';
+          }
+
+        } catch (error) {
+          // 8. Handle errors
+          console.error('=== ADD TO CALENDAR FAILED ===');
+          console.error('Error:', error);
+          console.error('Error message:', error.message);
+          
+          buttonElement.innerHTML = 'Retry ↻';
+          buttonElement.disabled = false;
+          
+          calendarAlert.textContent = `❌ Error adding "${eventToAdd.action}": ${error.message}`;
+          calendarAlert.className = 'alert alert-error';
+          calendarAlert.style.display = 'block';
+        }
+      }
+
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', () => {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+        }
+      });
+    </script>
+  </body>
+</html>
